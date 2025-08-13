@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pomodoro — Single-File App</title>
+  <style>
+    :root {
+      --bg: #0b0b10;
+      --panel: #14141c;
+      --panel-2: #1b1b26;
+      --text: #e8e8ef;
+      --muted: #a8a8bc;
+      --accent: #7c5cff; /* energetic violet */
+      --accent-2: #00e6a7; /* mint pop */
+      --danger: #ff5c8a;
+      --ok: #22d3ee;
+      --ring-bg: #2a2a3a;
+      --shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.02);
+      --radius: 18px;
+    }
+
+    /* Light mode variables */
+    [data-theme="light"] {
+      --bg: #f7f7fb;
+      --panel: #ffffff;
+      --panel-2: #f0f1f7;
+      --text: #17171f;
+      --muted: #4b4b63;
+      --accent: #6a5cff;
+      --accent-2: #06c58b;
+      --danger: #e11d48;
+      --ok: #0ea5e9;
+      --ring-bg: #e7e7f2;
+      --shadow: 0 10px 30px rgba(21,21,51,.10), inset 0 1px 0 rgba(255,255,255,.6);
+    }
+
+    /* System preference by default */
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) {
+        --bg: #f7f7fb;
+        --panel: #ffffff;
+        --panel-2: #f0f1f7;
+        --text: #17171f;
+        --muted: #4b4b63;
+        --accent: #6a5cff;
+        --accent-2: #06c58b;
+        --danger: #e11d48;
+        --ok: #0ea5e9;
+        --ring-bg: #e7e7f2;
+        --shadow: 0 10px 30px rgba(21,21,51,.10), inset 0 1px 0 rgba(255,255,255,.6);
+      }
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(124,92,255,.25), transparent 60%),
+                  radial-gradient(1200px 600px at 120% 10%, rgba(6,197,139,.18), transparent 50%),
+                  var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+    }
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 18px 44px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .title {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 800; letter-spacing: .3px;
+    }
+    .logo {
+      width: 36px; height: 36px; border-radius: 12px;
+      background: conic-gradient(from 230deg, var(--accent), var(--accent-2));
+      box-shadow: 0 12px 30px rgba(124,92,255,.35), inset 0 0 22px rgba(255,255,255,.25);
+    }
+    .subtitle { color: var(--muted); font-size: 14px; }
+
+    .row { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
+    @media (max-width: 900px) {
+      .row { grid-template-columns: 1fr; }
+    }
+
+    .card { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+    .card h3 { margin: 0 0 10px; font-size: 16px; letter-spacing: .2px; }
+
+    /* Timer panel */
+    .timer-wrap { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: stretch; }
+    @media (max-width: 1050px) { .timer-wrap { grid-template-columns: 1fr; } }
+
+    .timer-face { display: grid; place-items: center; padding: 10px; }
+    .timer-svg { width: clamp(220px, 34vw, 360px); height: clamp(220px, 34vw, 360px); }
+    .timer-label { text-align: center; margin-top: 10px; font-size: 14px; color: var(--muted); }
+
+    .big-time { position: absolute; font-size: clamp(44px, 8vw, 72px); font-weight: 800; letter-spacing: 1px; }
+
+    .controls { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .controls button { border: 0; border-radius: 12px; padding: 12px 14px; font-weight: 700; cursor: pointer; transition: transform .05s ease, box-shadow .2s ease, filter .15s; }
+    .controls button:active { transform: translateY(1px) scale(.99); filter: brightness(.96); }
+    .btn-primary { background: linear-gradient(180deg, var(--accent), #5a3ef0); color: #fff; box-shadow: 0 10px 25px rgba(124,92,255,.45); }
+    .btn-danger { background: linear-gradient(180deg, var(--danger), #c0163a); color: #fff; box-shadow: 0 10px 25px rgba(225,29,72,.35); }
+    .btn-ghost { background: var(--panel-2); color: var(--text); box-shadow: var(--shadow); }
+
+    .form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 12px; }
+    .form .field { display: grid; gap: 6px; }
+    .field label { font-size: 12px; color: var(--muted); }
+    .field input[type="number"] { width: 100%; box-sizing: border-box; border-radius: 12px; padding: 10px 12px; background: var(--panel-2); color: var(--text); border: 1px solid rgba(255,255,255,.05); outline: none; }
+
+    .switches { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 8px; }
+    .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+    .switch input { appearance: none; width: 44px; height: 26px; border-radius: 999px; background: #6b7280; position: relative; outline: none; transition: background .2s ease; }
+    .switch input:checked { background: var(--accent); }
+    .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s ease; }
+    .switch input:checked::after { transform: translateX(18px); }
+    .switch span { font-size: 13px; color: var(--muted); }
+
+    .mini { font-size: 12px; color: var(--muted); }
+
+    /* Sessions & charts */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    th { color: var(--muted); font-weight: 600; }
+    tbody tr:hover { background: rgba(124,92,255,.07); }
+
+    .table-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 700; letter-spacing: .2px; }
+    .chip.work { background: rgba(124,92,255,.16); color: #fff; }
+    .chip.short { background: rgba(6,197,139,.18); color: #0a0a0a; }
+    .chip.long { background: rgba(14,165,233,.22); color: #0a0a0a; }
+
+    .legend { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot.work { background: var(--accent); }
+    .dot.short { background: var(--accent-2); }
+    .dot.long { background: var(--ok); }
+
+    .kbd { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; background: var(--panel-2); border-radius: 6px; padding: 2px 6px; border: 1px solid rgba(255,255,255,.06); }
+
+    footer { margin-top: 16px; color: var(--muted); font-size: 13px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title">
+        <div class="logo" aria-hidden="true"></div>
+        <div>
+          <div style="font-size:20px; line-height:1.1">Pomodoro</div>
+          <div class="subtitle">Timer • Sessions log • SVG charts</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label class="switch" title="Toggle theme">
+          <input id="themeToggle" type="checkbox" />
+          <span>Dark mode</span>
+        </label>
+      </div>
+    </header>
+
+    <div class="row">
+      <section class="card">
+        <h3>Timer</h3>
+        <div class="timer-wrap">
+          <div class="timer-face">
+            <div style="position:relative; display:inline-grid; place-items:center;">
+              <svg class="timer-svg" viewBox="0 0 200 200" aria-label="Timer progress">
+                <defs>
+                  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+                    <feMerge>
+                      <feMergeNode in="coloredBlur"/>
+                      <feMergeNode in="SourceGraphic"/>
+                    </feMerge>
+                  </filter>
+                </defs>
+                <circle cx="100" cy="100" r="82" fill="none" stroke="var(--ring-bg)" stroke-width="20" />
+                <circle id="ring" cx="100" cy="100" r="82" fill="none" stroke="url(#grad)" stroke-linecap="round" stroke-width="20" filter="url(#glow)" transform="rotate(-90 100 100)" />
+                <defs>
+                  <linearGradient id="grad" x1="1" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent)" />
+                    <stop offset="100%" stop-color="var(--accent-2)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div class="big-time" id="time">25:00</div>
+            </div>
+            <div class="timer-label"><span id="sessionKind">Work</span> • cycle <span id="cycleNum">1</span></div>
+          </div>
+          <div style="display:grid; gap:12px; align-content:start;">
+            <div class="controls">
+              <button class="btn-primary" id="startPause">Start</button>
+              <button class="btn-ghost" id="reset">Reset</button>
+              <button class="btn-danger" id="skip">Skip</button>
+            </div>
+
+            <div class="form">
+              <div class="field">
+                <label for="workMins">Work (min)</label>
+                <input type="number" min="1" max="120" id="workMins" />
+              </div>
+              <div class="field">
+                <label for="shortMins">Short break (min)</label>
+                <input type="number" min="1" max="60" id="shortMins" />
+              </div>
+              <div class="field">
+                <label for="longMins">Long break (min)</label>
+                <input type="number" min="1" max="90" id="longMins" />
+              </div>
+              <div class="field">
+                <label for="intervalN">Work sessions per long break</label>
+                <input type="number" min="1" max="10" id="intervalN" />
+              </div>
+            </div>
+
+            <div class="switches">
+              <label class="switch"><input type="checkbox" id="autoStart" /><span>Auto-start next session</span></label>
+              <label class="switch"><input type="checkbox" id="soundOn" checked /><span>Sound alert</span></label>
+            </div>
+            <div class="mini">Shortcuts: <span class="kbd">Space</span> start/pause • <span class="kbd">R</span> reset • <span class="kbd">N</span> next/skip</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Sessions log</h3>
+        <div class="table-actions">
+          <button class="btn-ghost" id="exportCsv">Export CSV</button>
+          <button class="btn-danger" id="clearLog">Clear log</button>
+        </div>
+        <div style="overflow:auto; max-height: 380px; margin-top:10px;">
+          <table id="logTable" aria-label="Completed sessions log">
+            <thead>
+              <tr>
+                <th style="min-width:120px;">When</th>
+                <th>Type</th>
+                <th>Planned</th>
+                <th>Actual</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="grid-2" style="margin-top:18px;">
+      <div class="card">
+        <h3>Last 7 days — minutes completed</h3>
+        <div id="barChart" style="height:220px;">
+          <!-- SVG chart inserted by JS -->
+        </div>
+        <div class="mini">Includes only completed sessions.</div>
+      </div>
+      <div class="card">
+        <h3>Focus mix — work vs breaks</h3>
+        <div style="display:grid; grid-template-columns: 220px 1fr; gap: 10px; align-items:center;">
+          <div id="donutWrap" style="display:grid; place-items:center;">
+            <!-- SVG donut inserted by JS -->
+          </div>
+          <div>
+            <div class="legend">
+              <span><span class="dot work"></span> Work</span>
+              <span><span class="dot short"></span> Short breaks</span>
+              <span><span class="dot long"></span> Long breaks</span>
+            </div>
+            <div id="mixText" class="mini" style="margin-top: 8px;">No data yet — finish a session to see stats.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div>Built for daily flow. Hydrate, breathe, focus. ✨</div>
+      <div>Tip: tweak durations to match your chronotype.</div>
+    </footer>
+  </div>
+
+  <script>
+    // ---------- Utilities ----------
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+    const ls = {
+      get(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } },
+      set(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+    };
+
+    function formatTime(sec) {
+      sec = Math.max(0, Math.floor(sec));
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function todayKey(d = new Date()) {
+      return d.toISOString().slice(0,10);
+    }
+
+    function download(filename, text) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], {type:'text/csv'}));
+      a.download = filename; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    // ---------- Settings & State ----------
+    const settings = ls.get('pomodoro:settings', {
+      workMins: 25,
+      shortMins: 5,
+      longMins: 15,
+      intervalN: 4,
+      autoStart: true,
+      soundOn: true,
+      theme: 'auto'
+    });
+
+    let state = {
+      mode: 'work', // 'work' | 'short' | 'long'
+      isRunning: false,
+      totalSec: settings.workMins * 60,
+      remainSec: settings.workMins * 60,
+      cycleCount: 0, // completed work sessions in current cycle
+      timerId: null,
+    };
+
+    const ring = document.getElementById('ring');
+    const CIRC = 2 * Math.PI * 82; // circumference
+    ring.setAttribute('stroke-dasharray', `${CIRC}`);
+
+    function updateRing() {
+      const p = 1 - (state.remainSec / state.totalSec);
+      ring.setAttribute('stroke-dashoffset', String(p * CIRC));
+    }
+
+    function setInputsFromSettings() {
+      $('#workMins').value = settings.workMins;
+      $('#shortMins').value = settings.shortMins;
+      $('#longMins').value = settings.longMins;
+      $('#intervalN').value = settings.intervalN;
+      $('#autoStart').checked = settings.autoStart;
+      $('#soundOn').checked = settings.soundOn;
+    }
+
+    function applyTheme() {
+      const root = document.documentElement;
+      const toggle = $('#themeToggle');
+      if (settings.theme === 'dark') {
+        root.setAttribute('data-theme', 'dark'); toggle.checked = true;
+      } else if (settings.theme === 'light') {
+        root.setAttribute('data-theme', 'light'); toggle.checked = false;
+      } else {
+        root.removeAttribute('data-theme'); toggle.checked = matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+    }
+
+    // ---------- Timer Engine ----------
+    function setMode(mode) {
+      state.mode = mode;
+      let mins = settings.workMins;
+      if (mode === 'short') mins = settings.shortMins;
+      if (mode === 'long') mins = settings.longMins;
+      state.totalSec = mins * 60;
+      state.remainSec = state.totalSec;
+      $('#sessionKind').textContent = mode === 'work' ? 'Work' : (mode === 'short' ? 'Short break' : 'Long break');
+      document.title = `(${mins}:00) Pomodoro`;
+      updateRing();
+      renderTime();
+    }
+
+    function renderTime() {
+      $('#time').textContent = formatTime(state.remainSec);
+    }
+
+    function tick() {
+      state.remainSec -= 1;
+      renderTime();
+      updateRing();
+      if (state.remainSec <= 0) {
+        completeSession('Completed');
+      }
+    }
+
+    function start() {
+      if (state.isRunning) return;
+      state.isRunning = true;
+      $('#startPause').textContent = 'Pause';
+      state.timerId = setInterval(tick, 1000);
+    }
+
+    function pause() {
+      if (!state.isRunning) return;
+      clearInterval(state.timerId); state.timerId = null; state.isRunning = false;
+      $('#startPause').textContent = 'Resume';
+    }
+
+    function reset() {
+      pause();
+      state.remainSec = state.totalSec;
+      renderTime(); updateRing();
+      $('#startPause').textContent = 'Start';
+    }
+
+    function skip() {
+      completeSession('Skipped');
+    }
+
+    // ---------- Sound ----------
+    function beep(count = 2) {
+      if (!settings.soundOn) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const duration = 0.12;
+        for (let i=0;i<count;i++) {
+          const t = ctx.currentTime + i * 0.18;
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine';
+          o.frequency.value = 880 + i*60;
+          o.connect(g); g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.001, t);
+          g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+          o.start(t); o.stop(t + duration + 0.02);
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    // ---------- Log ----------
+    const LOG_KEY = 'pomodoro:log';
+    const log = ls.get(LOG_KEY, []);
+
+    function addLog(entry) {
+      log.unshift(entry);
+      ls.set(LOG_KEY, log);
+      renderLog();
+      updateCharts();
+    }
+
+    function renderLog() {
+      const body = $('#logBody');
+      if (!log.length) {
+        body.innerHTML = `<tr><td colspan="5" style="color:var(--muted);">No sessions yet. Your story begins when you hit Start.</td></tr>`;
+        return;
+      }
+      body.innerHTML = log.map(e => {
+        const when = new Date(e.ts).toLocaleString();
+        const typeChip = e.mode === 'work' ? '<span class="chip work">Work</span>' : (e.mode==='short' ? '<span class="chip short">Short break</span>' : '<span class="chip long">Long break</span>');
+        const planned = `${e.planned} min`;
+        const actual = `${Math.round(e.actual/60)} min`;
+        return `<tr>
+          <td>${when}</td>
+          <td>${typeChip}</td>
+          <td>${planned}</td>
+          <td>${actual}</td>
+          <td>${e.result}</td>
+        </tr>`
+      }).join('');
+    }
+
+    function exportCSV() {
+      const rows = [['When','Type','Planned (min)','Actual (sec)','Result']]
+        .concat(log.map(e => [new Date(e.ts).toISOString(), e.mode, e.planned, e.actual, e.result]));
+      const csv = rows.map(r => r.map(x => String(x).replaceAll('"','""')).map(x => `"${x}"`).join(',')).join('\n');
+      download(`pomodoro_log_${todayKey()}.csv`, csv);
+    }
+
+    function clearLog() {
+      if (!confirm('Clear all session logs?')) return;
+      log.length = 0; ls.set(LOG_KEY, log); renderLog(); updateCharts();
+    }
+
+    // ---------- Session transitions ----------
+    let sessionStartEpoch = Date.now();
+
+    function completeSession(result) {
+      const actualSec = Math.max(0, state.totalSec - Math.max(0, state.remainSec));
+      const plannedMin = Math.round(state.totalSec / 60);
+      const entry = { ts: Date.now(), mode: state.mode, planned: plannedMin, actual: actualSec, result };
+      addLog(entry);
+      beep(result === 'Completed' ? 3 : 1);
+
+      // Decide next mode
+      if (state.mode === 'work') {
+        state.cycleCount++;
+        $('#cycleNum').textContent = String((state.cycleCount % settings.intervalN) || settings.intervalN);
+        const next = (state.cycleCount % settings.intervalN === 0) ? 'long' : 'short';
+        setMode(next);
+      } else {
+        setMode('work');
+      }
+
+      // Auto-start logic
+      if (settings.autoStart) {
+        start();
+      } else {
+        pause();
+        $('#startPause').textContent = 'Start';
+      }
+      sessionStartEpoch = Date.now();
+    }
+
+    // ---------- Charts (SVG) ----------
+    function aggregateLast7Days() {
+      const map = new Map();
+      for (let i=0;i<7;i++) {
+        const d = new Date(); d.setDate(d.getDate()-i);
+        map.set(todayKey(d), { date: new Date(d), work:0, break:0, total:0 });
+      }
+      for (const e of log) {
+        const k = todayKey(new Date(e.ts));
+        if (!map.has(k)) continue;
+        const mins = Math.round(e.actual/60);
+        const obj = map.get(k);
+        if (e.result !== 'Completed') continue;
+        if (e.mode === 'work') obj.work += mins; else obj.break += mins;
+        obj.total += mins;
+      }
+      return Array.from(map.entries()).reverse().map(([k,v])=>({key:k, ...v}));
+    }
+
+    function drawBarChart() {
+      const data = aggregateLast7Days();
+      const wrap = $('#barChart');
+      const W = wrap.clientWidth || 520, H = 200, pad = 26;
+      const max = Math.max(30, ...data.map(d => d.total));
+      const xStep = (W - pad*2) / data.length;
+      const bars = [];
+      const grid = [];
+      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      // grid lines
+      for (let y=0;y<=4;y++) {
+        const yy = pad + (H-pad*2) * (y/4);
+        grid.push(`<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="rgba(255,255,255,.08)" />`)
+      }
+      data.forEach((d,i) => {
+        const h = (d.total / max) * (H - pad*2);
+        const x = pad + i*xStep + xStep*0.15;
+        const bw = xStep*0.7;
+        const y = H - pad - h;
+        bars.push(`<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="8" fill="url(#barGrad)" />`);
+        bars.push(`<text x="${x + bw/2}" y="${H-pad+16}" text-anchor="middle" font-size="10" fill="var(--muted)">${days[d.date.getDay()]}</text>`);
+        if (d.total>0) bars.push(`<text x="${x + bw/2}" y="${y-6}" text-anchor="middle" font-size="11" fill="var(--text)">${d.total}</text>`);
+      });
+      wrap.innerHTML = `
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Minutes completed bar chart">
+          <defs>
+            <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--accent)" />
+              <stop offset="100%" stop-color="var(--accent-2)" />
+            </linearGradient>
+          </defs>
+          ${grid.join('')}
+          ${bars.join('')}
+        </svg>`;
+    }
+
+    function drawDonut() {
+      const wrap = $('#donutWrap');
+      const totals = { work:0, short:0, long:0 };
+      for (const e of log) {
+        if (e.result !== 'Completed') continue;
+        const mins = Math.round(e.actual/60);
+        totals[e.mode] += mins;
+      }
+      const sum = totals.work + totals.short + totals.long;
+      const size = 180; const r = 64; const c = 2*Math.PI*r;
+      const perc = {
+        work: sum? totals.work/sum : 0,
+        short: sum? totals.short/sum : 0,
+        long: sum? totals.long/sum : 0,
+      };
+      const offs = {
+        work: 0,
+        short: perc.work,
+        long: perc.work + perc.short,
+      };
+      wrap.innerHTML = `
+        <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-label="Work vs break donut">
+          <g transform="translate(${size/2}, ${size/2}) rotate(-90)">
+            <circle r="${r}" fill="none" stroke="var(--ring-bg)" stroke-width="20" />
+            <circle r="${r}" fill="none" stroke="var(--accent)" stroke-width="20"
+              stroke-dasharray="${(perc.work*c).toFixed(2)} ${(c - perc.work*c).toFixed(2)}"
+              stroke-dashoffset="${(-offs.work*c).toFixed(2)}" />
+            <circle r="${r}" fill="none" stroke="var(--accent-2)" stroke-width="20"
+              stroke-dasharray="${(perc.short*c).toFixed(2)} ${(c - perc.short*c).toFixed(2)}"
+              stroke-dashoffset="${(-offs.short*c).toFixed(2)}" />
+            <circle r="${r}" fill="none" stroke="var(--ok)" stroke-width="20"
+              stroke-dasharray="${(perc.long*c).toFixed(2)} ${(c - perc.long*c).toFixed(2)}"
+              stroke-dashoffset="${(-offs.long*c).toFixed(2)}" />
+          </g>
+          <g font-size="18" font-weight="800" text-anchor="middle" fill="currentColor">
+            <text x="50%" y="53%">${sum || 0}m</text>
+          </g>
+        </svg>`;
+      const pct = x => sum? Math.round(x/sum*100) : 0;
+      $('#mixText').textContent = sum? `Work ${pct(totals.work)}% • Short ${pct(totals.short)}% • Long ${pct(totals.long)}%` : 'No data yet — finish a session to see stats.';
+    }
+
+    function updateCharts() { drawBarChart(); drawDonut(); }
+
+    // ---------- Event wiring ----------
+    function init() {
+      setInputsFromSettings();
+      applyTheme();
+      setMode('work');
+      renderLog();
+      updateCharts();
+
+      $('#startPause').addEventListener('click', () => state.isRunning ? pause() : start());
+      $('#reset').addEventListener('click', reset);
+      $('#skip').addEventListener('click', skip);
+
+      // inputs
+      $('#workMins').addEventListener('change', e => { settings.workMins = Math.max(1, +e.target.value||25); ls.set('pomodoro:settings', settings); if (state.mode==='work') setMode('work'); });
+      $('#shortMins').addEventListener('change', e => { settings.shortMins = Math.max(1, +e.target.value||5); ls.set('pomodoro:settings', settings); if (state.mode==='short') setMode('short'); });
+      $('#longMins').addEventListener('change', e => { settings.longMins = Math.max(1, +e.target.value||15); ls.set('pomodoro:settings', settings); if (state.mode==='long') setMode('long'); });
+      $('#intervalN').addEventListener('change', e => { settings.intervalN = Math.max(1, +e.target.value||4); ls.set('pomodoro:settings', settings); });
+      $('#autoStart').addEventListener('change', e => { settings.autoStart = e.target.checked; ls.set('pomodoro:settings', settings); });
+      $('#soundOn').addEventListener('change', e => { settings.soundOn = e.target.checked; ls.set('pomodoro:settings', settings); });
+
+      // theme toggle
+      $('#themeToggle').addEventListener('change', e => {
+        settings.theme = e.target.checked ? 'dark' : 'light';
+        ls.set('pomodoro:settings', settings);
+        applyTheme();
+      });
+
+      // CSV & clear
+      $('#exportCsv').addEventListener('click', exportCSV);
+      $('#clearLog').addEventListener('click', clearLog);
+
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (ev) => {
+        const tag = ev.target.tagName.toLowerCase();
+        if (tag === 'input') return; // avoid typing collisions
+        if (ev.code === 'Space') { ev.preventDefault(); state.isRunning ? pause() : start(); }
+        else if (ev.key.toLowerCase() === 'r') { ev.preventDefault(); reset(); }
+        else if (ev.key.toLowerCase() === 'n') { ev.preventDefault(); skip(); }
+      });
+
+      // Resize redraw
+      window.addEventListener('resize', () => { updateCharts(); });
+
+      // Restore theme toggle visual based on stored setting
+      $('#themeToggle').checked = (settings.theme === 'dark') || (settings.theme==='auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>
